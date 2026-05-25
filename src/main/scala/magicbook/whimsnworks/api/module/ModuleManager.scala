@@ -7,6 +7,7 @@ import net.neoforged.fml.ModList
 
 import java.io.{File, IOException}
 import java.net.{JarURLConnection, URL}
+import scala.annotation.tailrec
 import scala.collection.mutable
 
 /** Step 1: Scanning classpath `magicbook.whimsnworks.module` package
@@ -24,20 +25,19 @@ object ModuleManager {
 
   private val logger = DistLogger(s"${CW2Mod.NAME} | Module Manager")
 
-  private val modules: mutable.ListBuffer[ModModule] = mutable.ListBuffer.empty
-  private val enabledModules: mutable.LinkedHashMap[String, ModModule] = mutable.LinkedHashMap.empty
-
+  private var modules: Vector[ModModule] = Vector.empty
+  private var enabledModules: Map[String, ModModule] = Map.empty
   private var discovered = false
-  
+
   /** Manually register a module.
-    * 
+    *
     * @see [[discover]] for automatically version.
     */
   def register(module: ModModule): Unit = {
     if (modules.exists(_.moduleId == module.moduleId)) {
       throw new IllegalStateException(s"Module '${module.moduleId}' is already registered")
     }
-    modules += module
+    modules = modules :+ module
     logger.debug(s"Registered module: ${module.moduleId}")
   }
 
@@ -47,64 +47,25 @@ object ModuleManager {
       logger.warn("Cannot found any modules registered, it's that correct?")
       return
     }
-    
-    val mods = modules.filter { mod =>
-      val modMissing = mod.requiredMods.filterNot(ModList.get().isLoaded)
-      if (modMissing.nonEmpty) {
-        logger.info(s"Skipping module '${mod.moduleId}', missing mod(s): ${modMissing.mkString(", ")}")
-        false
-      } else {
-        true
-      }
-    }
-
-    if (mods.isEmpty) {
+    val filteredMods = filterByModDependencies(modules.toList)
+    if (filteredMods.isEmpty) {
       logger.warn("Cannot found any modules pass dependencies checking")
       return
     }
 
-    val moduleResolved: mutable.LinkedHashMap[String, ModModule] 
-      = mutable.LinkedHashMap.from(mods.map(m => m.moduleId -> m))
-    
-    var changed = true
-    while (changed) {
-      changed = false
-      val toRemove = moduleResolved.filter { case (_, module) =>
-        module.requiredModules.exists(depId => !moduleResolved.contains(depId))
-      }
-      if (toRemove.nonEmpty) {
-        toRemove.foreach { case (_, module) =>
-          logger.info(s"Skipping module '${module.moduleId}', missing required module(s): " + 
-              module.requiredModules.filterNot(moduleResolved.contains).mkString(", "))
-        }
-        moduleResolved --= toRemove.keys
-        changed = true
-      }
-    }
-    
-    val moduleSorted = sortModules(moduleResolved.values.toSeq)
-    
-    enabledModules.clear()
-    for (module <- moduleSorted) {
-      logger.info(s"Loading module: ${module.moduleId}")
-      module.onRegister(registrate)
-      module.onInit()
-      enabledModules(module.moduleId) = module
-    }
+    val resolved = resolveDependencies(filteredMods)
+    val sorted   = sortModules(resolved.values.toList)
+    initializeAll(sorted, registrate)
 
     logger.info(s"Module loading complete. Loaded ${enabledModules.size} / ${modules.size} module(s).")
   }
 
-  def initClient(): Unit = {
-    for (module <- enabledModules.values) {
-      module.onClientInit()
-    }
-  }
+  def initClient(): Unit = enabledModules.values.foreach(_.onClientInit())
 
   def isModuleEnabled(id: String): Boolean = enabledModules.contains(id)
-  
-  /** Scan the given package for [[discover]] annotated classes and register these modules. 
-    * 
+
+  /** Scan the given package for [[discover]] annotated classes and register these modules.
+    *
     * Will called automatically by [[init]], or can be invoked explicitly to control timing.
     *
     * @param pkg The dot-separated package name to scan.
@@ -115,60 +76,102 @@ object ModuleManager {
 
     logger.info(s"Scanning package '$pkg' for @discover...")
 
-    val classes = scanPackage(pkg)
-    var count = 0
+    val discoveredModules = discoverFrom(scanPackage(pkg))
+    discoveredModules.foreach(register)
 
-    for (clazz <- classes) {
-      if (hasDiscoverAnnotation(clazz)) {
-        if (classOf[ModModule].isAssignableFrom(clazz)) {
-          try {
-            register(getSingleton(clazz))
-            count += 1
-          } catch {
-            case e: Exception => logger.error(s"Failed to instantiate module: ${clazz.getName}", e)
+    logger.info(s"Auto-discovered ${discoveredModules.size} module(s) in package '$pkg'")
+  }
+
+  private def discoverFrom(classes: Seq[Class[?]]): Seq[ModModule] =
+    classes.filter(hasDiscoverAnnotation)
+      .flatMap { cls =>
+        if (classOf[ModModule].isAssignableFrom(cls)) {
+          try Some(getSingleton(cls))
+          catch { case e: Exception =>
+            logger.error(s"Failed to instantiate module: ${cls.getName}", e)
+            None
           }
         } else {
-          logger.warn(s"Class ${clazz.getName} has @discover but doesn't extend ModModule — skipping")
+          logger.warn(s"Class ${cls.getName} has @discover but doesn't extend ModModule — skipping")
+          None
         }
+      }
+
+  private def filterByModDependencies(modules: List[ModModule]): List[ModModule] =
+    modules.filter { mod =>
+      val modMissing = mod.requiredMods.filterNot(ModList.get().isLoaded)
+      if (modMissing.nonEmpty) {
+        logger.info(s"Skipping module '${mod.moduleId}', missing mod(s): ${modMissing.mkString(", ")}")
+        false
+      } else {
+        true
       }
     }
 
-    logger.info(s"Auto-discovered $count module(s) in package '$pkg'")
+  @tailrec
+  private def resolveDependencies(resolvedModules: List[ModModule]): Map[String, ModModule] = {
+    val idx          = resolvedModules.map(module => module.moduleId -> module).toMap
+    val (keep, drop) = idx.partition { case (_, module) =>
+      module.requiredModules.forall(idx.contains)
+    }
+
+    if (drop.isEmpty) {
+      keep
+    } else {
+      drop.foreach { case (_, module) =>
+        logger.info(s"Skipping module '${module.moduleId}', missing required module(s): " +
+          module.requiredModules.filterNot(idx.contains).mkString(", "))
+      }
+      resolveDependencies(keep.values.toList)
+    }
   }
 
-  private val discoverAnnotationName: String = classOf[discover].getName
-  
-  private def hasDiscoverAnnotation(clazz: Class[?]): Boolean
-    = clazz.getDeclaredAnnotations.exists(_.annotationType().getName == discoverAnnotationName)
-
   /** Topological sorting all modules via DFS.
-    * 
+    *
     * @param modules All prepare modules to be sorted.
     */
-  private def sortModules(modules: Seq[ModModule]): Seq[ModModule] = {
-    val moduleIdx   = modules.map(module => module.moduleId -> module).toMap
-    val visited = mutable.LinkedHashSet.empty[String]
-    val result  = mutable.ListBuffer.empty[ModModule]
+  private def sortModules(modules: List[ModModule]): List[ModModule] = {
+    val moduleIdx = modules.map(module => module.moduleId -> module).toMap
 
-    def visit(module: ModModule, path: List[String]): Unit = {
-      if (visited.contains(module.moduleId)) return
-      if (path.contains(module.moduleId)) {
+    def visit(module: ModModule,
+              path: List[String],
+              visited: Set[String],
+              result: List[ModModule]): (Set[String], List[ModModule]) = {
+      if (visited.contains(module.moduleId)) {
+        (visited, result)
+      } else if (path.contains(module.moduleId)) {
         val cycle = (module.moduleId :: path).reverse
           .dropWhile(_ != module.moduleId)
           .mkString(" -> ")
         throw new IllegalStateException(s"Circular module dependency detected: $cycle")
+      } else {
+        val (v, r) = module.requiredModules.foldLeft((visited, result)) {
+          case ((vs, rs), depId) =>
+            moduleIdx.get(depId).fold((vs, rs))(visit(_, module.moduleId :: path, vs, rs))
+        }
+        (v + module.moduleId, module :: r)
       }
-      
-      for (depId <- module.requiredModules) {
-        moduleIdx.get(depId).foreach(visit(_, module.moduleId :: path))
-      }
-      visited += module.moduleId
-      result += module
     }
 
-    for (module <- modules) visit(module, Nil)
-    result.toSeq
+    modules.foldLeft((Set.empty[String], List.empty[ModModule])) {
+      case ((vs, rs), m) => visit(m, Nil, vs, rs)
+    }._2.reverse
   }
+
+  private def initializeAll(sortedModules: List[ModModule], registrate: CreateRegistrate): Unit = {
+    enabledModules = Map.empty
+    for (module <- sortedModules) {
+      logger.info(s"Loading module: ${module.moduleId}")
+      module.onRegister(registrate)
+      module.onInit()
+      enabledModules = enabledModules + (module.moduleId -> module)
+    }
+  }
+
+  private val discoverAnnotationName: String = classOf[discover].getName
+
+  private def hasDiscoverAnnotation(clazz: Class[?]): Boolean
+    = clazz.getDeclaredAnnotations.exists(_.annotationType().getName == discoverAnnotationName)
 
   /** Reflect the singleton instance from a class that is expected to be a Scala `object`
     * because it has `MODULE$` field.
@@ -182,7 +185,7 @@ object ModuleManager {
       case _: NoSuchFieldException => clazz.getDeclaredConstructor().newInstance().asInstanceOf[ModModule]
     }
   }
-  
+
   /** Find all classes in the given dot-separated package.
     *
     * Handles directory-based classpath (dev) and Jar-based (production).
@@ -205,7 +208,7 @@ object ModuleManager {
     result.toSeq
   }
 
-  private def listClasses(url: URL, pkg: String): Seq[Class[?]] = {
+  private def listClasses(url: URL, pkg: String): Seq[Class[?]] =
     url.getProtocol match {
       case "file" =>
         val dir = new File(url.toURI)
@@ -215,44 +218,42 @@ object ModuleManager {
         logger.debug(s"Unsupported protocol '${url.getProtocol}', skipping: $url")
         Seq.empty
     }
-  }
 
   private def scanDir(dir: File, pkg: String): Seq[Class[?]] = {
-    val result = mutable.ListBuffer.empty[Class[?]]
     val prefix = pkg + "."
     val files  = dir.listFiles()
-    if (files != null) {
-      for (file <- files) {
-        val name = file.getName
-        if (name.endsWith(".class")) {
-          val className = prefix + name.substring(0, name.length - 6)
-          loadClass(className).foreach(result += _)
+    if (files == null) {
+      Seq.empty
+    } else {
+      files.filter(_.getName.endsWith(".class"))
+        .flatMap { file =>
+          val className = prefix + file.getName.substring(0, file.getName.length - 6)
+          loadClass(className)
         }
-      }
+        .toSeq
     }
-    result.toSeq
   }
 
   private def scanJar(jarUrl: URL, pkg: String): Seq[Class[?]] = {
-    val result = mutable.ListBuffer.empty[Class[?]]
-    val prefix = pkg.replace('.', '/') + "/"
-
+    val prefix     = pkg.replace('.', '/') + "/"
     val connection = jarUrl.openConnection().asInstanceOf[JarURLConnection]
     connection.setUseCaches(false)
     val jarFile = connection.getJarFile
+
     try {
+      val buffer  = mutable.ListBuffer.empty[Class[?]]
       val entries = jarFile.entries()
       while (entries.hasMoreElements) {
         val name = entries.nextElement().getName
         if (name.startsWith(prefix) && name.endsWith(".class")) {
           val className = name.substring(0, name.length - 6).replace('/', '.')
-          loadClass(className).foreach(result += _)
+          loadClass(className).foreach(buffer += _)
         }
       }
+      buffer.toSeq
     } finally {
       jarFile.close()
     }
-    result.toSeq
   }
 
   private def loadClass(name: String): Option[Class[?]] = {
@@ -262,7 +263,7 @@ object ModuleManager {
       case _: ClassNotFoundException =>
         logger.warn(s"Class not found: $name")
         None
-      case e: Exception =>
+      case e: Exception              =>
         logger.warn(s"Failed to load class: $name", e)
         None
     }
