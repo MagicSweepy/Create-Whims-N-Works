@@ -5,6 +5,7 @@ bin
 .metadata
 .classpath
 .project
+eclipse
 
 # idea
 out
@@ -17,7 +18,10 @@ out
 build
 .gradle
 
-# other
-eclipse
+# repository
 run
 runs
+libs
+
+# other
+.explore
