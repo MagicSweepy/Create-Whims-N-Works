@@ -3,6 +3,7 @@ package magicbook.whimsnworks
 import com.simibubi.create.foundation.data.CreateRegistrate
 import magicbook.whimsnworks.api.module.ModuleManager
 import magicbook.whimsnworks.api.util.DistLogger
+import magicbook.whimsnworks.module.CoreModule
 import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.common.Mod
@@ -40,6 +41,7 @@ object CW2Mod {
 @Mod(CW2Mod.ID)
 class CW2Mod(eventBus: IEventBus) {
   CW2Mod.LOGGER.debug("Starting to load ModuleManager...")
+  ModuleManager.register(CoreModule)
   ModuleManager.init(CW2Mod.REGISTRATE)
   if (FMLEnvironment.dist.isClient) {
       ModuleManager.initClient()
