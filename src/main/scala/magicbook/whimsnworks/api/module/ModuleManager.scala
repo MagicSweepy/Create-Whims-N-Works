@@ -172,8 +172,19 @@ object ModuleManager {
 
   private val discoverAnnotationName: String = classOf[discover].getName
 
-  private def hasDiscoverAnnotation(clazz: Class[?]): Boolean
-    = clazz.getDeclaredAnnotations.exists(_.annotationType().getName == discoverAnnotationName)
+  private def hasDiscoverAnnotation(clazz: Class[?]): Boolean = {
+    def check(c: Class[?]): Boolean = c.getDeclaredAnnotations.exists(
+      _.annotationType().getName == discoverAnnotationName)
+    if (check(clazz)) {
+      true
+    } else if (clazz.getName.endsWith("$")) {
+      try {
+        check(Class.forName(clazz.getName.stripSuffix("$"), false, clazz.getClassLoader))
+      } catch {
+        case _: ClassNotFoundException => false
+      }
+    } else false
+  }
 
   /** Reflect the singleton instance from a class that is expected to be a Scala `object`
     * because it has `MODULE$` field.
