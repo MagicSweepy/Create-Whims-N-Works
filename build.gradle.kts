@@ -110,6 +110,10 @@ repositories {
     mavenCentral()
     gradlePluginPortal()
     maven {
+        name = "Curse Maven"
+        url = uri("https://cursemaven.com")
+    }
+    maven {
         name = "Kotori316 Maven"
         url = uri("https://maven.kotori316.com")
         content {
@@ -158,22 +162,16 @@ dependencies {
 
     // region Mod Dependencies
 
-    // Registrate 1.3.0+67
     implementation(libs.registrate)
-
-    // Ponder 1.0.63
     implementation(libs.ponder)
+    implementation(variantOf(libs.createMod) { classifier("slim") }) { isTransitive = false }
 
-    // Create 6.0.8
-    implementation(variantOf(libs.createMod) { classifier("slim") }) {
-        isTransitive = false
-    }
-
-    // Flywheel 1.0.2
     compileOnly(libs.flywheelAPI)
     runtimeOnly(libs.flywheel)
 
-    // JEI 19.25.0.323
+    implementation(libs.bitsNBobs)
+    implementation(libs.encased)
+
     compileOnly(libs.jeiBaseAPI)
     compileOnly(libs.jeiNeoforgedAPI)
     runtimeOnly(libs.jei)

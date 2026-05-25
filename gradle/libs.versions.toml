@@ -7,10 +7,12 @@ cats            = "2.13.0-kotori"
 
 scalableCats    = "3.7.1-build-11"  # Scalable Cats Force 3.7.1-build-11
 jei             = "19.25.0.323"     # Just Enough Items   19.25.0.323
-registrate      = "MC1.21-1.3.0+67" # Registrate 1.3.0+67
-ponder          = "1.0.63"          # Ponder 1.0.63
-createMod       = "6.0.7-159"       # Create 6.0.7-159 (6.0.8)
-flywheel        = "1.0.2"           # Flywheel 1.0.2
+registrate      = "MC1.21-1.3.0+67" # Registrate          1.3.0+67
+ponder          = "1.0.85+mc1.21.1" # Ponder              1.0.85
+createMod       = "6.0.10-281"      # Create              6.0.10-281
+flywheel        = "1.0.2"           # Flywheel            1.0.2
+bitsNBobs       = "7591460"         # Create: Bits'n'Bobs 0.0.44
+encased         = "8132852"         # Create: Encased     1.8.1-ht1
 
 [libraries]
 scala           = { group = "org.scala-lang",           name = "scala-library",                version.ref = "scala"          }
@@ -22,10 +24,12 @@ jeiBaseAPI      = { group = "mezz.jei",                 name = "jei-1.21.1-commo
 jeiNeoforgedAPI = { group = "mezz.jei",                 name = "jei-1.21.1-neoforge-api",      version.ref = "jei"            }
 jei             = { group = "mezz.jei",                 name = "jei-1.21.1-neoforge",          version.ref = "jei"            }
 registrate      = { group = "com.tterrag.registrate",   name = "Registrate",                   version.ref = "registrate"     }
-ponder          = { group = "net.createmod.ponder",     name = "Ponder-NeoForge-1.21.1",       version.ref = "ponder"         }
+ponder          = { group = "net.createmod.ponder",     name = "ponder-neoforge",              version.ref = "ponder"         }
 createMod       = { group = "com.simibubi.create",      name = "create-1.21.1",                version.ref = "createMod"      }
 flywheelAPI     = { group = "dev.engine-room.flywheel", name = "flywheel-neoforge-api-1.21.1", version.ref = "flywheel"       }
 flywheel        = { group = "dev.engine-room.flywheel", name = "flywheel-neoforge-1.21.1",     version.ref = "flywheel"       }
+bitsNBobs       = { group = "curse.maven",              name = "create-bits-n-bobs-1398383",   version.ref = "bitsNBobs"      }
+encased         = { group = "curse.maven",              name = "create-encased-829380",        version.ref = "encased"        }
 
 [plugins]
 modDevKit       = { id    = "net.neoforged.moddev",     version.ref = "modDevKit"                                             }
