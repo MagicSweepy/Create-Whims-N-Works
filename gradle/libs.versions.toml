@@ -1,0 +1,31 @@
+[versions]
+modDevKit       = "1.0.11"
+
+scala           = "2.13.16"
+scala3          = "3.7.1"
+cats            = "2.13.0-kotori"
+
+scalableCats    = "3.7.1-build-11"  # Scalable Cats Force 3.7.1-build-11
+jei             = "19.25.0.323"     # Just Enough Items   19.25.0.323
+registrate      = "MC1.21-1.3.0+67" # Registrate 1.3.0+67
+ponder          = "1.0.63"          # Ponder 1.0.63
+createMod       = "6.0.7-159"       # Create 6.0.7-159 (6.0.8)
+flywheel        = "1.0.2"           # Flywheel 1.0.2
+
+[libraries]
+scala           = { group = "org.scala-lang",           name = "scala-library",                version.ref = "scala"          }
+scala3          = { group = "org.scala-lang",           name = "scala3-library_3",             version.ref = "scala3"         }
+cats            = { group = "org.typelevel",            name = "cats-core_3",                  version.ref = "cats"           }
+
+scalableCats    = { group = "com.kotori316",            name = "scalablecatsforce-neoforge",   version.ref = "scalableCats"   }
+jeiBaseAPI      = { group = "mezz.jei",                 name = "jei-1.21.1-common-api",        version.ref = "jei"            }
+jeiNeoforgedAPI = { group = "mezz.jei",                 name = "jei-1.21.1-neoforge-api",      version.ref = "jei"            }
+jei             = { group = "mezz.jei",                 name = "jei-1.21.1-neoforge",          version.ref = "jei"            }
+registrate      = { group = "com.tterrag.registrate",   name = "Registrate",                   version.ref = "registrate"     }
+ponder          = { group = "net.createmod.ponder",     name = "Ponder-NeoForge-1.21.1",       version.ref = "ponder"         }
+createMod       = { group = "com.simibubi.create",      name = "create-1.21.1",                version.ref = "createMod"      }
+flywheelAPI     = { group = "dev.engine-room.flywheel", name = "flywheel-neoforge-api-1.21.1", version.ref = "flywheel"       }
+flywheel        = { group = "dev.engine-room.flywheel", name = "flywheel-neoforge-1.21.1",     version.ref = "flywheel"       }
+
+[plugins]
+modDevKit       = { id    = "net.neoforged.moddev",     version.ref = "modDevKit"                                             }
