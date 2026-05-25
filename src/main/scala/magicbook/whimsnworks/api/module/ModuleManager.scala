@@ -138,7 +138,7 @@ object ModuleManager {
 
   private val discoverAnnotationName: String = classOf[discover].getName
   
-  private def hasDiscoverAnnotation(clazz: Class[_]): Boolean
+  private def hasDiscoverAnnotation(clazz: Class[?]): Boolean
     = clazz.getDeclaredAnnotations.exists(_.annotationType().getName == discoverAnnotationName)
 
   /** Topological sorting all modules via DFS.
