@@ -85,10 +85,13 @@ object ModuleManager {
   }
 
   private def discoverFrom(classes: Seq[Class[?]]): Seq[ModModule] =
-    classes.filter(hasDiscoverAnnotation)
+    classes.filter(cls => !classes.map(_.getName).toSet.contains(cls.getName + "$"))
+      .filter(hasDiscoverAnnotation)
       .flatMap { cls =>
         if (classOf[ModModule].isAssignableFrom(cls)) {
-          try Some(getSingleton(cls))
+          try {
+            Some(getSingleton(cls))
+          }
           catch { case e: Exception =>
             logger.error(s"Failed to instantiate module: ${cls.getName}", e)
             None
@@ -98,6 +101,7 @@ object ModuleManager {
           None
         }
       }
+
 
   private def filterByModDependencies(modules: List[ModModule]): List[ModModule] =
     modules.filter { mod =>
