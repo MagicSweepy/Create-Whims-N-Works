@@ -6,9 +6,11 @@ import magicbook.whimsnworks.api.util.DistLogger
 import net.neoforged.fml.ModList
 
 import java.io.{File, IOException}
-import java.net.{JarURLConnection, URL, URLDecoder}
+import java.net.{JarURLConnection, URL}
+import java.nio.file.{Files, Paths}
 import scala.annotation.tailrec
 import scala.collection.mutable
+import scala.jdk.CollectionConverters._
 
 /** Step 1: Scanning classpath `magicbook.whimsnworks.module` package
   *         for all annotated classes with [[[discover]].
@@ -258,14 +260,22 @@ object ModuleManager {
   }
 
   private def scanUnion(url: URL, pkg: String): Seq[Class[?]] = {
-    val str = url.toString
-    val sep = str.lastIndexOf("!/")
-    if (sep < 0) {
-      Seq.empty
-    } else {
-      val basePath = URLDecoder.decode(str.substring("union:".length, sep), "UTF-8")
-      val dir = File(basePath)
-      if (dir.isDirectory) scanDir(dir, pkg) else Seq.empty
+    try {
+      val path = Paths.get(url.toURI)
+      if (Files.isDirectory(path)) {
+        Files.list(path).iterator().asScala
+          .filter(p => p.getFileName.toString.endsWith(".class"))
+          .flatMap { p =>
+            val name = p.getFileName.toString
+            val className = pkg + "." + name.substring(0, name.length - 6)
+            loadClass(className)
+          }
+          .toSeq
+      } else {
+        Seq.empty
+      }
+    } catch {
+      case _: Exception => Seq.empty
     }
   }
 
