@@ -6,7 +6,7 @@ import magicbook.whimsnworks.api.util.DistLogger
 import net.neoforged.fml.ModList
 
 import java.io.{File, IOException}
-import java.net.{JarURLConnection, URL}
+import java.net.{JarURLConnection, URL, URLDecoder}
 import scala.annotation.tailrec
 import scala.collection.mutable
 
@@ -213,8 +213,9 @@ object ModuleManager {
       case "file" =>
         val dir = new File(url.toURI)
         if (dir.isDirectory) scanDir(dir, pkg) else Seq.empty
-      case "jar"  => scanJar(url, pkg)
-      case _      =>
+      case "jar"   => scanJar(url, pkg)
+      case "union" => scanUnion(url, pkg)
+      case _       =>
         logger.debug(s"Unsupported protocol '${url.getProtocol}', skipping: $url")
         Seq.empty
     }
@@ -253,6 +254,18 @@ object ModuleManager {
       buffer.toSeq
     } finally {
       jarFile.close()
+    }
+  }
+
+  private def scanUnion(url: URL, pkg: String): Seq[Class[?]] = {
+    val str = url.toString
+    val sep = str.lastIndexOf("!/")
+    if (sep < 0) {
+      Seq.empty
+    } else {
+      val basePath = URLDecoder.decode(str.substring("union:".length, sep), "UTF-8")
+      val dir = File(basePath)
+      if (dir.isDirectory) scanDir(dir, pkg) else Seq.empty
     }
   }
 
