@@ -80,16 +80,29 @@ object ModuleManager {
     }
   }
 
-  /** Reflect the singleton instance from a Scala `object` via `MODULE$` field.
+  /** Reflect the singleton instance from a Scala `object`.
     */
   private def getSingleton(clazz: Class[?]): ModModule = {
-    try {
-      val field = clazz.getDeclaredField("MODULE$")
-      field.setAccessible(true)
-      field.get(null).asInstanceOf[ModModule]
-    } catch {
-      case _: NoSuchFieldException => clazz.getDeclaredConstructor().newInstance().asInstanceOf[ModModule]
-    }
+    def modFieldOf(c: Class[?]): Option[ModModule] =
+      try {
+        val field = c.getDeclaredField("MODULE$")
+        field.setAccessible(true)
+        Some(field.get(null).asInstanceOf[ModModule])
+      } catch {
+        case _: NoSuchFieldException => None
+      }
+
+    modFieldOf(clazz).orElse {
+        try {
+          val companion = Class.forName(clazz.getName + "$", false, clazz.getClassLoader)
+          modFieldOf(companion)
+        } catch {
+          case _: ClassNotFoundException => None
+        }
+      }
+      .getOrElse {
+        clazz.getDeclaredConstructor().newInstance().asInstanceOf[ModModule]
+      }
   }
 
   private def filterByModDependencies(modules: List[ModModule]): List[ModModule] =
