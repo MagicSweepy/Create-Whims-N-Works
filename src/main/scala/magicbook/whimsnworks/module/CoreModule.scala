@@ -2,9 +2,8 @@ package magicbook.whimsnworks.module
 
 import com.simibubi.create.foundation.data.CreateRegistrate
 import magicbook.whimsnworks.CW2Mod
-import magicbook.whimsnworks.api.module.{ModModule, discover}
+import magicbook.whimsnworks.api.module.ModModule
 
-@discover
 object CoreModule extends ModModule {
 
   override def moduleId: String   = "core"

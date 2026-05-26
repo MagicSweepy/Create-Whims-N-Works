@@ -1,40 +1,23 @@
 package magicbook.whimsnworks.api.module
 
+import com.google.gson.{Gson, JsonObject}
 import com.simibubi.create.foundation.data.CreateRegistrate
 import magicbook.whimsnworks.CW2Mod
 import magicbook.whimsnworks.api.util.DistLogger
 import net.neoforged.fml.ModList
 
-import java.io.{File, IOException}
-import java.net.{JarURLConnection, URL}
-import java.nio.file.{Files, Paths}
+import java.io.InputStreamReader
+import java.nio.charset.StandardCharsets
 import scala.annotation.tailrec
-import scala.collection.mutable
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 
-/** Step 1: Scanning classpath `magicbook.whimsnworks.module` package
-  *         for all annotated classes with [[[discover]].
-  * Step 2: Check [[ModModule.requiredMods]] against NF mod list, skip
-  *         modules which missing dependencies.
-  * Step 3: Check [[ModModule.requiredModules]] and iterative fixed-point
-  *         for all modules whose dependencies cannot be satisfied.
-  * Step 4: Do DFS ordering each module initialises after its declared
-  *         dependencies
-  * Step 5: Call [[ModModule.onRegister()]] then [[ModModule.onInit()]]
-  *         in dependency order.
-  */
 object ModuleManager {
 
   private val logger = DistLogger(s"${CW2Mod.NAME} | Module Manager")
 
   private var modules: Vector[ModModule] = Vector.empty
   private var enabledModules: Map[String, ModModule] = Map.empty
-  private var discovered = false
 
-  /** Manually register a module.
-    *
-    * @see [[discover]] for automatically version.
-    */
   def register(module: ModModule): Unit = {
     if (modules.exists(_.moduleId == module.moduleId)) {
       throw new IllegalStateException(s"Module '${module.moduleId}' is already registered")
@@ -44,7 +27,7 @@ object ModuleManager {
   }
 
   def init(registrate: CreateRegistrate): Unit = {
-    if (!discovered) scanModules()
+    loadModulesFromManifest()
     if (modules.isEmpty) {
       logger.warn("Cannot found any modules registered, it's that correct?")
       return
@@ -66,48 +49,67 @@ object ModuleManager {
 
   def isModuleEnabled(id: String): Boolean = enabledModules.contains(id)
 
-  /** Scan the given package for [[discover]] annotated classes and register these modules.
-    *
-    * Will called automatically by [[init]], or can be invoked explicitly to control timing.
-    *
-    * @param pkg The dot-separated package name to scan.
+  /** Load module class names from manifest on the classpath and register each one.
     */
-  private def scanModules(pkg: String = "magicbook.whimsnworks.module"): Unit = {
-    if (discovered) return
-    discovered = true
+  private def loadModulesFromManifest(): Unit = {
+    val classLoader = Thread.currentThread().getContextClassLoader
+    val resources   = classLoader.getResources("META-INF/whimsnworks-modules.json")
+    val gson        = Gson()
 
-    logger.info(s"Scanning package '$pkg' for @discover...")
-
-    val discoveredModules = discoverFrom(scanPackage(pkg))
-    discoveredModules.foreach(register)
-
-    logger.info(s"Auto-discovered ${discoveredModules.size} module(s) in package '$pkg'")
+    while (resources.hasMoreElements) {
+      val url    = resources.nextElement()
+      val reader = InputStreamReader(url.openStream(), StandardCharsets.UTF_8)
+      try {
+        val json       = gson.fromJson(reader, classOf[JsonObject])
+        val moduleList = json.getAsJsonArray("modules")
+        if (moduleList != null) {
+          moduleList.iterator().asScala.foreach { element =>
+            val className = element.getAsString
+            try {
+              val cls      = Class.forName(className, false, classLoader)
+              val instance = getSingleton(cls)
+              register(instance)
+            } catch {
+              case e: Exception => logger.error(s"Failed to load module class: $className", e)
+            }
+          }
+        }
+      } finally {
+        reader.close()
+      }
+    }
   }
 
-  private def discoverFrom(classes: Seq[Class[?]]): Seq[ModModule] =
-    classes.filter(cls => !classes.map(_.getName).toSet.contains(cls.getName + "$"))
-      .filter(hasDiscoverAnnotation)
-      .flatMap { cls =>
-        if (classOf[ModModule].isAssignableFrom(cls)) {
-          try {
-            Some(getSingleton(cls))
-          }
-          catch { case e: Exception =>
-            logger.error(s"Failed to instantiate module: ${cls.getName}", e)
-            None
-          }
-        } else {
-          logger.warn(s"Class ${cls.getName} has @discover but doesn't extend ModModule — skipping")
-          None
-        }
+  /** Reflect the singleton instance from a Scala `object`.
+    */
+  private def getSingleton(clazz: Class[?]): ModModule = {
+    def modFieldOf(c: Class[?]): Option[ModModule] =
+      try {
+        val field = c.getDeclaredField("MODULE$")
+        field.setAccessible(true)
+        Some(field.get(null).asInstanceOf[ModModule])
+      } catch {
+        case _: NoSuchFieldException => None
       }
 
+    modFieldOf(clazz).orElse {
+        try {
+          val companion = Class.forName(clazz.getName + "$", false, clazz.getClassLoader)
+          modFieldOf(companion)
+        } catch {
+          case _: ClassNotFoundException => None
+        }
+      }
+      .getOrElse {
+        clazz.getDeclaredConstructor().newInstance().asInstanceOf[ModModule]
+      }
+  }
 
   private def filterByModDependencies(modules: List[ModModule]): List[ModModule] =
-    modules.filter { mod =>
-      val modMissing = mod.requiredMods.filterNot(ModList.get().isLoaded)
-      if (modMissing.nonEmpty) {
-        logger.info(s"Skipping module '${mod.moduleId}', missing mod(s): ${modMissing.mkString(", ")}")
+    modules.filter { module =>
+      val missingMod = module.requiredMods.filterNot(ModList.get().isLoaded)
+      if (missingMod.nonEmpty) {
+        logger.info(s"Skipping module '${module.moduleId}', missing mod(s): ${missingMod.mkString(", ")}")
         false
       } else {
         true
@@ -117,9 +119,7 @@ object ModuleManager {
   @tailrec
   private def resolveDependencies(resolvedModules: List[ModModule]): Map[String, ModModule] = {
     val idx          = resolvedModules.map(module => module.moduleId -> module).toMap
-    val (keep, drop) = idx.partition { case (_, module) =>
-      module.requiredModules.forall(idx.contains)
-    }
+    val (keep, drop) = idx.partition { case (_, module) => module.requiredModules.forall(idx.contains) }
 
     if (drop.isEmpty) {
       keep
@@ -171,139 +171,6 @@ object ModuleManager {
       module.onRegister(registrate)
       module.onInit()
       enabledModules = enabledModules + (module.moduleId -> module)
-    }
-  }
-
-  private val discoverAnnotationName: String = classOf[discover].getName
-
-  private def hasDiscoverAnnotation(clazz: Class[?]): Boolean = {
-    def check(c: Class[?]): Boolean = c.getDeclaredAnnotations.exists(
-      _.annotationType().getName == discoverAnnotationName)
-    if (check(clazz)) {
-      true
-    } else if (clazz.getName.endsWith("$")) {
-      try {
-        check(Class.forName(clazz.getName.stripSuffix("$"), false, clazz.getClassLoader))
-      } catch {
-        case _: ClassNotFoundException => false
-      }
-    } else false
-  }
-
-  /** Reflect the singleton instance from a class that is expected to be a Scala `object`
-    * because it has `MODULE$` field.
-    */
-  private def getSingleton(clazz: Class[?]): ModModule = {
-    try {
-      val field = clazz.getDeclaredField("MODULE$")
-      field.setAccessible(true)
-      field.get(null).asInstanceOf[ModModule]
-    } catch {
-      case _: NoSuchFieldException => clazz.getDeclaredConstructor().newInstance().asInstanceOf[ModModule]
-    }
-  }
-
-  /** Find all classes in the given dot-separated package.
-    *
-    * Handles directory-based classpath (dev) and Jar-based (production).
-    */
-  private def scanPackage(pkg: String): Seq[Class[?]] = {
-    val classLoader = Thread.currentThread().getContextClassLoader
-    val path        = pkg.replace('.', '/')
-    val result      = mutable.LinkedHashSet.empty[Class[?]]
-
-    try {
-      val resources = classLoader.getResources(path)
-      while (resources.hasMoreElements) {
-        try result ++= listClasses(resources.nextElement(), pkg)
-        catch { case e: IOException => logger.warn(s"Failed to scan classpath entry", e) }
-      }
-    } catch {
-      case _: IOException => // :)
-    }
-
-    result.toSeq
-  }
-
-  private def listClasses(url: URL, pkg: String): Seq[Class[?]] =
-    url.getProtocol match {
-      case "file" =>
-        val dir = new File(url.toURI)
-        if (dir.isDirectory) scanDir(dir, pkg) else Seq.empty
-      case "jar"   => scanJar(url, pkg)
-      case "union" => scanUnion(url, pkg)
-      case _       =>
-        logger.debug(s"Unsupported protocol '${url.getProtocol}', skipping: $url")
-        Seq.empty
-    }
-
-  private def scanDir(dir: File, pkg: String): Seq[Class[?]] = {
-    val prefix = pkg + "."
-    val files  = dir.listFiles()
-    if (files == null) {
-      Seq.empty
-    } else {
-      files.filter(_.getName.endsWith(".class"))
-        .flatMap { file =>
-          val className = prefix + file.getName.substring(0, file.getName.length - 6)
-          loadClass(className)
-        }
-        .toSeq
-    }
-  }
-
-  private def scanJar(jarUrl: URL, pkg: String): Seq[Class[?]] = {
-    val prefix     = pkg.replace('.', '/') + "/"
-    val connection = jarUrl.openConnection().asInstanceOf[JarURLConnection]
-    connection.setUseCaches(false)
-    val jarFile = connection.getJarFile
-
-    try {
-      val buffer  = mutable.ListBuffer.empty[Class[?]]
-      val entries = jarFile.entries()
-      while (entries.hasMoreElements) {
-        val name = entries.nextElement().getName
-        if (name.startsWith(prefix) && name.endsWith(".class")) {
-          val className = name.substring(0, name.length - 6).replace('/', '.')
-          loadClass(className).foreach(buffer += _)
-        }
-      }
-      buffer.toSeq
-    } finally {
-      jarFile.close()
-    }
-  }
-
-  private def scanUnion(url: URL, pkg: String): Seq[Class[?]] = {
-    try {
-      val path = Paths.get(url.toURI)
-      if (Files.isDirectory(path)) {
-        Files.list(path).iterator().asScala
-          .filter(p => p.getFileName.toString.endsWith(".class"))
-          .flatMap { p =>
-            val name = p.getFileName.toString
-            val className = pkg + "." + name.substring(0, name.length - 6)
-            loadClass(className)
-          }
-          .toSeq
-      } else {
-        Seq.empty
-      }
-    } catch {
-      case _: Exception => Seq.empty
-    }
-  }
-
-  private def loadClass(name: String): Option[Class[?]] = {
-    try {
-      Some(Class.forName(name, false, Thread.currentThread().getContextClassLoader))
-    } catch {
-      case _: ClassNotFoundException =>
-        logger.warn(s"Class not found: $name")
-        None
-      case e: Exception              =>
-        logger.warn(s"Failed to load class: $name", e)
-        None
     }
   }
 }
