@@ -1,9 +1,12 @@
 package magicbook.whimsnworks
 
 import com.simibubi.create.foundation.data.CreateRegistrate
+import com.simibubi.create.foundation.item.{ItemDescription, KineticStats, TooltipModifier}
+import magicbook.whimsnworks.CW2Mod.REGISTRATE
 import magicbook.whimsnworks.api.module.ModuleManager
 import magicbook.whimsnworks.api.util.DistLogger
-import magicbook.whimsnworks.registration.{CW2CreativeModeTabs, CW2Registrate}
+import magicbook.whimsnworks.registration.{CW2BlockEntities, CW2Blocks, CW2CreativeModeTabs, CW2Registrate, CW2TransmissionSets}
+import net.createmod.catnip.lang.FontHelper
 import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.common.Mod
@@ -30,6 +33,9 @@ object CW2Mod {
 
   final val REGISTRATE: CreateRegistrate = CW2Registrate.create(ID)
 
+  REGISTRATE.setTooltipModifierFactory(item => ItemDescription.Modifier(item, FontHelper.Palette.STANDARD_CREATE)
+    .andThen(TooltipModifier.mapNull(KineticStats.create(item))))
+
   /** Make the mod as [[ResourceLocation]] for register entries.
    *
    *  @param path The path in the given namespace (modid by default).
@@ -40,12 +46,13 @@ object CW2Mod {
 
 @Mod(CW2Mod.ID)
 class CW2Mod(eventBus: IEventBus) {
+  REGISTRATE.registerEventListeners(eventBus)
+
   CW2Mod.LOGGER.debug("Starting to load ModuleManager...")
   ModuleManager.init(CW2Mod.REGISTRATE)
   if (FMLEnvironment.dist.isClient) {
       ModuleManager.initClient()
   }
   CW2Mod.LOGGER.debug("Finished ModuleManager load!")
-  
   CW2CreativeModeTabs.register(eventBus)
 }

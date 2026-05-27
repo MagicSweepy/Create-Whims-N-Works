@@ -11,15 +11,12 @@ object CoreModule extends ModModule {
   override def moduleName: String = s"${CW2Mod.NAME} | Core Module"
 
   override def onRegister(registrate: CreateRegistrate): Unit = {
+    CW2TransmissionSets.register()
     CW2Blocks.register()
     CW2BlockEntities.register()
   }
 
-  override def onInit(): Unit = {
-      // TODO: Common setup
-  }
+  override def onInit(): Unit = {}
 
-  override def onClientInit(): Unit = {
-    CW2TransmissionSets.register()
-  }
+  override def onClientInit(): Unit = {}
 }
