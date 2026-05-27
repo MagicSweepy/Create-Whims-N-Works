@@ -3,6 +3,7 @@ package magicbook.whimsnworks
 import com.simibubi.create.foundation.data.CreateRegistrate
 import magicbook.whimsnworks.api.module.ModuleManager
 import magicbook.whimsnworks.api.util.DistLogger
+import magicbook.whimsnworks.registration.{CW2CreativeModeTabs, CW2Registrate}
 import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.common.Mod
@@ -27,7 +28,7 @@ object CW2Mod {
   
   final val LOGGER = DistLogger(NAME)
 
-  final val REGISTRATE: CreateRegistrate = CreateRegistrate.create(ID)
+  final val REGISTRATE: CreateRegistrate = CW2Registrate.create(ID)
 
   /** Make the mod as [[ResourceLocation]] for register entries.
    *
@@ -45,4 +46,6 @@ class CW2Mod(eventBus: IEventBus) {
       ModuleManager.initClient()
   }
   CW2Mod.LOGGER.debug("Finished ModuleManager load!")
+  
+  CW2CreativeModeTabs.register(eventBus)
 }
